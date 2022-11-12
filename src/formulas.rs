@@ -2,7 +2,8 @@
 // by the usage of a scientific library.
 
 use libm::expf;
+use ndarray::Array1;
 
-pub fn sigmoid(z: f32) -> f32 {
-    1. / (1. + expf(-z))
+pub fn sigmoid(z: &Array1<f32>) -> Array1<f32> {
+    z.clone().map(|x| 1. / (1. + expf(-x)))
 }
