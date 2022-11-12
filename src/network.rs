@@ -1,7 +1,8 @@
 use itertools::Itertools;
+use ndarray::Array1;
 use rand::Rng;
 
-use ndarray::Array1;
+use crate::formulas;
 
 #[derive(Debug)]
 pub struct Network {
@@ -12,7 +13,7 @@ pub struct Network {
 }
 
 impl Network {
-    pub fn new(layers: &[u32]) -> Self {        
+    pub fn new(layers: &[u32]) -> Self {
         Network {
             layers: Array1::from_vec(layers.to_vec()),
             layers_num: layers.len(),
