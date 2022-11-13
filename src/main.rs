@@ -8,11 +8,8 @@ mod formulas;
 const TRAINING_DATA_FOLDER: &str = "data/train";
 
 fn main() {
-    let data: Vec<Image> = io::get_data(TRAINING_DATA_FOLDER).unwrap();
-    for (i, row) in data.into_iter().enumerate() {
-        println!("label of image {} is {}", i, row.label);
-    }
+    let mut data: Vec<Image> = io::get_data(TRAINING_DATA_FOLDER).unwrap();
+    let mut network = Network::new(&[784, 30, 10]);
 
-    let network = Network::new(&[2, 3, 1]);
-    println!("{:?}", network);
+    network.sgd(&mut data, 1, 10, 0.00001);
 }
