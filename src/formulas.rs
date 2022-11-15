@@ -2,12 +2,12 @@
 // by the usage of a scientific library.
 
 use libm::expf;
-use ndarray::Array1;
+use ndarray::Array2;
 
-pub fn sigmoid(z: &Array1<f32>) -> Array1<f32> {
+pub fn sigmoid(z: &Array2<f32>) -> Array2<f32> {
     z.map(|x| 1. / (1. + expf(-x)))
 }
 
-pub fn sigmoid_prime(z: &Array1<f32>) -> Array1<f32> {
+pub fn sigmoid_prime(z: &Array2<f32>) -> Array2<f32> {
     sigmoid(z) * (1.0 - sigmoid(z))
 }

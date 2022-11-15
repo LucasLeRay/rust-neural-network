@@ -1,81 +1,112 @@
-use itertools::Itertools;
-use ndarray::{Array1, Array2};
-use ndarray_rand::{RandomExt, rand_distr::Uniform};
+use ndarray::{Array, Array1, Array2};
+use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
 use rand::{seq::SliceRandom};
 
 use crate::{formulas, io::mnist::Image};
 
 #[derive(Debug)]
 pub struct Network {
-    pub layers: Vec<u32>,
+    pub layers: Vec<usize>,
     pub layers_num: usize,
-    pub biases: Vec<Array1<f32>>,
+    pub biases: Vec<Array2<f32>>,
     pub weights: Vec<Array2<f32>>,
 }
 
 impl Network {
-    pub fn new(layers: &[u32]) -> Self {
-        let layers: Vec<u32> = layers.to_vec();
+    pub fn new(layers: &[usize]) -> Self {
+        let layers_num: usize = layers.len();
+        let mut biases: Vec<Array2<f32>> = Vec::new();
+        let mut weights: Vec<Array2<f32>> = Vec::new();
+
+        for i in 1..layers_num {
+            weights.push(Array::random((layers[i], layers[i - 1]), StandardNormal));
+            biases.push(Array::random((layers[i], 1), StandardNormal));
+        }
 
         Network {
-            biases: biases_from_layers(&layers, true),
-            weights: weights_from_layers(&layers, true),
-            layers_num: layers.len(),
-            layers,
+            biases,
+            weights,
+            layers_num,
+            layers: layers.to_owned()
         }
     }
 
     pub fn sgd(
         &mut self,
-        train_data: &mut Vec<Image>,
+        train_data: &[Image],
         epochs: u32,
         mini_batch_size: usize,
         eta: f32,
     ) {
         let n = train_data.len();
 
-        for _epoch in 0..epochs {
-            train_data.shuffle(&mut rand::thread_rng());
+        for epoch in 0..epochs {
+            let mut indices: Vec<usize> = (0..train_data.len()).collect::<Vec<usize>>();
+            indices.shuffle(&mut rand::thread_rng());
 
-            for i in (0..n).step_by(mini_batch_size) {
-                let mini_batch: &[Image] = &train_data[i..(i+mini_batch_size)];
+            for batch_indices in (0..n)
+                .step_by(mini_batch_size)
+                .collect::<Vec<usize>>()
+                .windows(2)
+            {
+                let (start, end) = (batch_indices[0], batch_indices[1]);
+                let mini_batch: &[Image] = &train_data[start..end];
                 let (gb, gw) = self.gradients_from_mini_batch(mini_batch);
 
                 self.update_biases_from_gradient(gb, eta, mini_batch_size);
                 self.update_weights_from_gradient(gw, eta, mini_batch_size);
             }
+
+            println!("Epoch {}/{} completed!", epoch, epochs);
         }
     }
 
-    fn gradients_from_mini_batch(&self, mini_batch: &[Image]) -> (Vec<Array1<f32>>, Vec<Array2<f32>>) {
-        let mut gradients_b: Vec<Array1<f32>> = biases_from_layers(&self.layers, false);
-        let mut gradients_w: Vec<Array2<f32>> = weights_from_layers(&self.layers, false);
+    fn gradients_from_mini_batch(&self, mini_batch: &[Image]) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
+        let mut gb: Vec<Array2<f32>> = zero_vec_like(&self.biases);
+        let mut gw: Vec<Array2<f32>> = zero_vec_like(&self.weights);
 
         for image in mini_batch {
             let (delta_gb, delta_gw) = self.backprop(&image.pixels, image.label);
-            for (layer_gw, dgw) in gradients_w.iter_mut().zip(delta_gw.iter()) {
+            for (layer_gw, dgw) in gw.iter_mut().zip(delta_gw.iter()) {
                 *layer_gw += dgw
             }
-            for (layer_gb, dgb) in gradients_b.iter_mut().zip(delta_gb.iter()) {
+            for (layer_gb, dgb) in gb.iter_mut().zip(delta_gb.iter()) {
                 *layer_gb += dgb
             }
         }
 
-        (gradients_b, gradients_w)
+        (gb, gw)
     }
 
-    fn backprop(&self, x: &Array1<f32>, y: u8) -> (Vec<Array1<f32>>, Vec<Array2<f32>>) {
-        let mut delta_gb: Vec<Array1<f32>> = biases_from_layers(&self.layers, false);
-        let mut delta_gw: Vec<Array2<f32>> = weights_from_layers(&self.layers, false);
+    fn backprop(&self, x: &Array1<f32>, y: u8) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
+        let mut delta_gb: Vec<Array2<f32>> = zero_vec_like(&self.biases);
+        let mut delta_gw: Vec<Array2<f32>> = zero_vec_like(&self.weights);
 
-        let activations: Vec<Array1<f32>> = self.feedforward(x.clone());
+        let (activations, zs): (Vec<Array2<f32>>, Vec<Array2<f32>>) = self.feedforward(&x);
 
-        // TODO: backward propagation
-                
+        // to differentiate an output from a sigmoid (e.g. 'output'),
+        // we can multiply it by (1 - 'output').
+        let output: &Array2<f32> = &activations[activations.len()-1];
+        let delta: Array2<f32> = self.cost(output, y) - formulas::sigmoid_prime(zs.last().unwrap());
+
+        let nbiases: usize = self.biases.len();
+        let nweights: usize = self.weights.len();
+
+        delta_gb[nbiases - 1] = delta.to_owned();
+        delta_gw[nweights - 1] = delta.dot(&activations[self.layers_num-2].t());
+
+        for l in 2..self.layers_num {
+            let z: &Array2<f32> = &zs[zs.len() - l];
+            let sigmoid_prime_z: Array2<f32> = formulas::sigmoid_prime(&z);
+            let delta: Array2<f32> = delta_gw[nweights-l+1].t().dot(&delta) * sigmoid_prime_z;
+            delta_gb[nbiases - l] = delta.to_owned();
+            delta_gw[nweights - l] = delta.dot(&activations[self.layers_num-l-1].t());
+        }
+
         (delta_gb, delta_gw)
     }
             
-    fn update_biases_from_gradient(&mut self, gradients: Vec<Array1<f32>>, eta: f32, batch_size: usize) {
+    fn update_biases_from_gradient(&mut self, gradients: Vec<Array2<f32>>, eta: f32, batch_size: usize) {
         for (biases_layer, gradient_layer) in self.biases.iter_mut().zip(gradients.iter()) {
             *biases_layer -= &((eta / batch_size as f32) * gradient_layer);
         }
@@ -88,60 +119,37 @@ impl Network {
     }
 
     // Compute the cost of the output layer from the expected number.
-    fn cost(&self, output: &Array1<f32>, y: u8) -> Array1<f32> {
+    fn cost(&self, output: &Array2<f32>, y: u8) -> Array2<f32> {
         let mut y_arr: Array1<f32> = Array1::zeros(10);
         y_arr[y as usize] = 1.0;
+        let y_arr_matrix = y_arr.to_shape((10, 1)).unwrap().to_owned();
         
-        output - y_arr
+        output - y_arr_matrix
     }
 
     // Perform a feedforward on the network from the training example.
     // Return the activations of nodes.
-    fn feedforward(&self, x: Array1<f32>) -> Vec<Array1<f32>> {
-        let mut activations: Vec<Array1<f32>> = Vec::new();
-        activations.push(x.clone());
+    fn feedforward(&self, x: &Array1<f32>) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
+        let mut activations: Vec<Array2<f32>> = Vec::new();
+        let mut zs: Vec<Array2<f32>> = Vec::new();
+        let img_flat_size: usize = x.len();
+        activations.push(x.to_shape((img_flat_size, 1)).unwrap().to_owned());
 
         for (b, w) in self.biases.iter().zip(self.weights.iter()) {
-            let z = activations.last().unwrap().dot(w) + b;
-            activations.push(formulas::sigmoid(&z));
+            let z: Array2<f32> = w.dot(activations.last().unwrap()) + b;
+            zs.push(z);
+            let activation: Array2<f32> = formulas::sigmoid(zs.last().unwrap());
+            activations.push(activation);
         }
 
-        activations
+        (activations, zs)
     }
 }
 
-// Create a vector of arrays containing values related to weights.
-fn biases_from_layers(layers: &Vec<u32>, random: bool) -> Vec<Array1<f32>> {
-    let mut rng = rand::thread_rng();
-    let mut biases: Vec<Array1<f32>> = Vec::new();
 
-    for layer in layers[1..].into_iter() {
-        let shape: usize = *layer as usize;
-        let layer: Array1<f32> = if random {
-            Array1::random_using(shape, Uniform::new(0., 1.), &mut rng)
-        } else {
-            Array1::zeros(shape as usize)
-        };
-        biases.push(layer);
-    }
-
-    biases
-}
-
-// Create a vector of arrays containing values related to biases.
-fn weights_from_layers(layers: &Vec<u32>, random: bool) -> Vec<Array2<f32>> {
-    let mut rng = rand::thread_rng();
-    let mut weights: Vec<Array2<f32>> = Vec::new();
-    
-    for (left, right) in layers.into_iter().tuple_windows() {
-        let shape: (usize, usize) = (*left as usize, *right as usize);
-        let layer: Array2<f32> = if random {
-            Array2::random_using(shape, Uniform::new(0., 1.), &mut rng)
-        } else {
-            Array2::zeros(shape)
-        };
-        weights.push(layer);
-    }
-
-    weights
+fn zero_vec_like(vec: &[Array2<f32>]) -> Vec<Array2<f32>>{
+    vec.iter().map(|x| {
+        let shape = x.shape();
+        Array2::zeros((shape[0], shape[1]))
+    }).collect()
 }
