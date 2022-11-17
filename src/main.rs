@@ -13,5 +13,5 @@ fn main() {
     let test_data: Vec<Image> = io::get_data(TESTING_DATA_FOLDER).unwrap();
     let mut network = Network::new(&[784, 30, 10]);
 
-    network.sgd(&mut train_data, 30, 10, 0.00001, &test_data);
+    network.sgd(&mut train_data, 30, 10, 3.0, &test_data);
 }

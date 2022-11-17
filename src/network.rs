@@ -31,6 +31,7 @@ impl Network {
         }
     }
 
+    // Perform a Stochastic Gradient Descent to train a neural network.
     pub fn sgd(
         &mut self,
         train_data: &[Image],
@@ -39,13 +40,14 @@ impl Network {
         eta: f32,
         test_data: &[Image],
     ) {
-        let n: usize = train_data.len();
+        let n_train: usize = train_data.len();
+        let n_test: usize = test_data.len();
 
         for epoch in 0..epochs {
             let mut indices: Vec<usize> = (0..train_data.len()).collect::<Vec<usize>>();
             indices.shuffle(&mut rand::thread_rng());
 
-            for batch_indices in (0..n)
+            for batch_indices in (0..n_train)
                 .step_by(mini_batch_size)
                 .collect::<Vec<usize>>()
                 .windows(2)
@@ -58,62 +60,68 @@ impl Network {
                 self.update_weights_from_gradient(gw, eta, mini_batch_size);
             }
 
-            println!("Epoch {}: {} / {}", epoch, self.evaluate(test_data), n);
+            println!("Epoch {}: {} / {}", epoch, self.evaluate(test_data), n_test);
         }
     }
 
+    // Compute the gradients of a mini-batch, using the backpropagation.
     fn gradients_from_mini_batch(&self, mini_batch: &[Image]) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
-        let mut gb: Vec<Array2<f32>> = zero_vec_like(&self.biases);
-        let mut gw: Vec<Array2<f32>> = zero_vec_like(&self.weights);
+        let mut gradient_b: Vec<Array2<f32>> = zero_vec_like(&self.biases);
+        let mut gradient_w: Vec<Array2<f32>> = zero_vec_like(&self.weights);
 
         for image in mini_batch {
             let (delta_gb, delta_gw) = self.backprop(&image.pixels, image.label);
-            for (layer_gw, dgw) in gw.iter_mut().zip(delta_gw.iter()) {
-                *layer_gw += dgw
+            for (gb, dgb) in gradient_b.iter_mut().zip(delta_gb.iter()) {
+                *gb += dgb
             }
-            for (layer_gb, dgb) in gb.iter_mut().zip(delta_gb.iter()) {
-                *layer_gb += dgb
+            for (gw, ngw) in gradient_w.iter_mut().zip(delta_gw.iter()) {
+                *gw += ngw
             }
         }
 
-        (gb, gw)
+        (gradient_b, gradient_w)
     }
 
+    // Perform the backpropagation algorithm for a single training example
+    // and return its gradients.
     fn backprop(&self, x: &Array1<f32>, y: u8) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
-        let mut delta_gb: Vec<Array2<f32>> = zero_vec_like(&self.biases);
-        let mut delta_gw: Vec<Array2<f32>> = zero_vec_like(&self.weights);
+        let mut gradient_b: Vec<Array2<f32>> = zero_vec_like(&self.biases);
+        let mut gradient_w: Vec<Array2<f32>> = zero_vec_like(&self.weights);
 
         let (activations, zs): (Vec<Array2<f32>>, Vec<Array2<f32>>) = self.feedforward(&x);
 
-
-        let output: &Array2<f32> = &activations[activations.len()-1];
-        // output error vector
-        let delta: Array2<f32> = self.cost(output, y) - formulas::sigmoid_prime(zs.last().unwrap());
-
+        let delta: Array2<f32> = formulas::output_error(
+            &self.cost(&activations[activations.len()-1], y),
+            &zs[zs.len() - 1]
+        );
+        
         let nbiases: usize = self.biases.len();
         let nweights: usize = self.weights.len();
 
-        delta_gb[nbiases - 1] = delta.to_owned();
-        delta_gw[nweights - 1] = delta.dot(&activations[self.layers_num-2].t());
-
+        gradient_b[nbiases - 1] = formulas::rate_of_change_of_biases(&delta);
+        gradient_w[nweights - 1] = formulas::rate_of_change_of_weights(
+            &delta, &activations[activations.len()-2]
+        );
+        
         for l in 2..self.layers_num {
-            let z: &Array2<f32> = &zs[zs.len() - l];
-            let sigmoid_prime_z: Array2<f32> = formulas::sigmoid_prime(&z);
-            // output error vector for the layer 'l'
-            let delta: Array2<f32> = delta_gw[nweights-l+1].t().dot(&delta) * sigmoid_prime_z;
-            delta_gb[nbiases - l] = delta.to_owned();
-            delta_gw[nweights - l] = delta.dot(&activations[self.layers_num-l-1].t());
+            let delta: Array2<f32> = formulas::layer_error(
+                &delta, &self.weights[nweights - l + 1], &zs[zs.len() - l]
+            );
+            gradient_b[nbiases - l] = formulas::rate_of_change_of_biases(&delta);
+            gradient_w[nweights - l] = formulas::rate_of_change_of_weights(
+                &delta, &activations[activations.len()-l-1]
+            );
         }
 
-        (delta_gb, delta_gw)
+        (gradient_b, gradient_w)
     }
-            
+
     fn update_biases_from_gradient(&mut self, gradients: Vec<Array2<f32>>, eta: f32, batch_size: usize) {
         for (biases_layer, gradient_layer) in self.biases.iter_mut().zip(gradients.iter()) {
             *biases_layer -= &((eta / batch_size as f32) * gradient_layer);
         }
     }
-    
+
     fn update_weights_from_gradient(&mut self, gradients: Vec<Array2<f32>>, eta: f32, batch_size: usize) {
         for (weights_layer, gradient_layer) in self.weights.iter_mut().zip(gradients.iter()) {
             *weights_layer -= &((eta / batch_size as f32) * gradient_layer);
@@ -147,6 +155,7 @@ impl Network {
         (activations, zs)
     }
 
+    // Predict label for a single example.
     fn predict(&self, pixels: &Array1<f32>) -> u8 {
         let (activations, _) = self.feedforward(pixels);
         let output: &Array2<f32> = activations.last().unwrap();
@@ -161,6 +170,8 @@ impl Network {
         predicted as u8
     }
 
+    // Evaluate every example in the testing set and return the number of
+    // correct predictions.
     fn evaluate(&self, testing_set: &[Image]) -> u32 {
         let predictions: Vec<u8> = testing_set
             .iter()
