@@ -1,6 +1,6 @@
 use ndarray::{Array, Array1, Array2};
 use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
-use rand::{seq::SliceRandom};
+use rand::seq::SliceRandom;
 
 use crate::{formulas, io::mnist::Image};
 
@@ -37,8 +37,9 @@ impl Network {
         epochs: u32,
         mini_batch_size: usize,
         eta: f32,
+        test_data: &[Image],
     ) {
-        let n = train_data.len();
+        let n: usize = train_data.len();
 
         for epoch in 0..epochs {
             let mut indices: Vec<usize> = (0..train_data.len()).collect::<Vec<usize>>();
@@ -57,7 +58,7 @@ impl Network {
                 self.update_weights_from_gradient(gw, eta, mini_batch_size);
             }
 
-            println!("Epoch {}/{} completed!", epoch, epochs);
+            println!("Epoch {}: {} / {}", epoch, self.evaluate(test_data), n);
         }
     }
 
@@ -84,9 +85,9 @@ impl Network {
 
         let (activations, zs): (Vec<Array2<f32>>, Vec<Array2<f32>>) = self.feedforward(&x);
 
-        // to differentiate an output from a sigmoid (e.g. 'output'),
-        // we can multiply it by (1 - 'output').
+
         let output: &Array2<f32> = &activations[activations.len()-1];
+        // output error vector
         let delta: Array2<f32> = self.cost(output, y) - formulas::sigmoid_prime(zs.last().unwrap());
 
         let nbiases: usize = self.biases.len();
@@ -98,6 +99,7 @@ impl Network {
         for l in 2..self.layers_num {
             let z: &Array2<f32> = &zs[zs.len() - l];
             let sigmoid_prime_z: Array2<f32> = formulas::sigmoid_prime(&z);
+            // output error vector for the layer 'l'
             let delta: Array2<f32> = delta_gw[nweights-l+1].t().dot(&delta) * sigmoid_prime_z;
             delta_gb[nbiases - l] = delta.to_owned();
             delta_gw[nweights - l] = delta.dot(&activations[self.layers_num-l-1].t());
@@ -143,6 +145,32 @@ impl Network {
         }
 
         (activations, zs)
+    }
+
+    fn predict(&self, pixels: &Array1<f32>) -> u8 {
+        let (activations, _) = self.feedforward(pixels);
+        let output: &Array2<f32> = activations.last().unwrap();
+
+        let mut predicted: usize = 0;
+        for (i, prediction) in output.iter().enumerate() {
+            if *prediction > output[[predicted, 0]] {
+                predicted = i;
+            }
+        }
+
+        predicted as u8
+    }
+
+    fn evaluate(&self, testing_set: &[Image]) -> u32 {
+        let predictions: Vec<u8> = testing_set
+            .iter()
+            .map(|image| self.predict(&image.pixels))
+            .collect();
+        testing_set
+            .iter()
+            .zip(predictions.iter())
+            .map(|(image, prediction)| if image.label == *prediction {1} else {0})
+            .sum()
     }
 }
 
