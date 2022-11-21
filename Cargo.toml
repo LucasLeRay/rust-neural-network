@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 byteorder = "1.4.3"
 flate2 = "1.0.24"
+lazy_static = "1.4.0"
 libm = "0.2.6"
 ndarray = "0.15.6"
 ndarray-rand = "0.14.0"

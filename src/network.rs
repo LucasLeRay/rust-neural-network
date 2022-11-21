@@ -2,7 +2,7 @@ use ndarray::{Array, Array1, Array2};
 use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
 use rand::seq::SliceRandom;
 
-use crate::{formulas, io::mnist::Image};
+use crate::{formulas, io::mnist::Image, cost::Cost};
 
 #[derive(Debug)]
 pub struct Network {
@@ -39,6 +39,7 @@ impl Network {
         mini_batch_size: usize,
         eta: f32,
         test_data: &[Image],
+        cost: &dyn Cost,
     ) {
         let n_train: usize = train_data.len();
         let n_test: usize = test_data.len();
@@ -54,7 +55,7 @@ impl Network {
             {
                 let (start, end) = (batch_indices[0], batch_indices[1]);
                 let mini_batch: &[Image] = &train_data[start..end];
-                let (gb, gw) = self.gradients_from_mini_batch(mini_batch);
+                let (gb, gw) = self.gradients_from_mini_batch(mini_batch, cost);
 
                 self.update_biases_from_gradient(gb, eta, mini_batch_size);
                 self.update_weights_from_gradient(gw, eta, mini_batch_size);
@@ -65,12 +66,12 @@ impl Network {
     }
 
     // Compute the gradients of a mini-batch, using the backpropagation.
-    fn gradients_from_mini_batch(&self, mini_batch: &[Image]) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
+    fn gradients_from_mini_batch(&self, mini_batch: &[Image], cost: &dyn Cost) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
         let mut gradient_b: Vec<Array2<f32>> = zero_vec_like(&self.biases);
         let mut gradient_w: Vec<Array2<f32>> = zero_vec_like(&self.weights);
 
         for image in mini_batch {
-            let (delta_gb, delta_gw) = self.backprop(&image.pixels, image.label);
+            let (delta_gb, delta_gw) = self.backprop(&image.pixels, image.label, cost);
             for (gb, dgb) in gradient_b.iter_mut().zip(delta_gb.iter()) {
                 *gb += dgb
             }
@@ -84,14 +85,14 @@ impl Network {
 
     // Perform the backpropagation algorithm for a single training example
     // and return its gradients.
-    fn backprop(&self, x: &Array1<f32>, y: u8) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
+    fn backprop(&self, x: &Array1<f32>, y: u8, cost: &dyn Cost) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
         let mut gradient_b: Vec<Array2<f32>> = zero_vec_like(&self.biases);
         let mut gradient_w: Vec<Array2<f32>> = zero_vec_like(&self.weights);
 
         let (activations, zs): (Vec<Array2<f32>>, Vec<Array2<f32>>) = self.feedforward(&x);
 
         let delta: Array2<f32> = formulas::output_error(
-            &self.cost_derivative(&activations[activations.len()-1], y),
+            &cost.derivative(&activations[activations.len()-1], y as usize),
             &zs[zs.len() - 1]
         );
         
@@ -126,16 +127,6 @@ impl Network {
         for (weights_layer, gradient_layer) in self.weights.iter_mut().zip(gradients.iter()) {
             *weights_layer -= &((eta / batch_size as f32) * gradient_layer);
         }
-    }
-
-    // Compute the quadratic cost derivative of the output layer from the expected number.
-    // Since the cost is (a - y)**2 / 2, its derivative is a - y
-    fn cost_derivative(&self, output: &Array2<f32>, y: u8) -> Array2<f32> {
-        let mut y_arr: Array1<f32> = Array1::zeros(10);
-        y_arr[y as usize] = 1.0;
-        let y_arr_matrix = y_arr.to_shape((10, 1)).unwrap().to_owned();
-        
-        output - y_arr_matrix
     }
 
     // Perform a feedforward on the network from the training example.
