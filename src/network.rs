@@ -91,7 +91,7 @@ impl Network {
         let (activations, zs): (Vec<Array2<f32>>, Vec<Array2<f32>>) = self.feedforward(&x);
 
         let delta: Array2<f32> = formulas::output_error(
-            &self.cost(&activations[activations.len()-1], y),
+            &self.cost_derivative(&activations[activations.len()-1], y),
             &zs[zs.len() - 1]
         );
         
@@ -128,8 +128,9 @@ impl Network {
         }
     }
 
-    // Compute the cost of the output layer from the expected number.
-    fn cost(&self, output: &Array2<f32>, y: u8) -> Array2<f32> {
+    // Compute the quadratic cost derivative of the output layer from the expected number.
+    // Since the cost is (a - y)**2 / 2, its derivative is a - y
+    fn cost_derivative(&self, output: &Array2<f32>, y: u8) -> Array2<f32> {
         let mut y_arr: Array1<f32> = Array1::zeros(10);
         y_arr[y as usize] = 1.0;
         let y_arr_matrix = y_arr.to_shape((10, 1)).unwrap().to_owned();
