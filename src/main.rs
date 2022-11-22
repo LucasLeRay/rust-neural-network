@@ -3,8 +3,6 @@ mod io;
 mod formulas;
 mod network;
 
-use cost::QuadraticCost;
-
 use crate::network::Network;
 use crate::io::mnist::Image;
 
@@ -22,5 +20,5 @@ fn main() {
         10,
         0.5,
         &test_data,
-        &QuadraticCost);
+        &cost::CrossEntropyCost);
 }

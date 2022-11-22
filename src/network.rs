@@ -91,9 +91,10 @@ impl Network {
 
         let (activations, zs): (Vec<Array2<f32>>, Vec<Array2<f32>>) = self.feedforward(&x);
 
-        let delta: Array2<f32> = formulas::output_error(
-            &cost.derivative(&activations[activations.len()-1], y as usize),
-            &zs[zs.len() - 1]
+        let delta: Array2<f32> = cost.delta(
+            &zs[zs.len() - 1],
+            &activations[activations.len()-1],
+            y as usize
         );
         
         let nbiases: usize = self.biases.len();

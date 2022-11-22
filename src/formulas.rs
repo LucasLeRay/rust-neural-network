@@ -12,11 +12,6 @@ pub fn sigmoid_prime(z: &Array2<f32>) -> Array2<f32> {
     sigmoid(z) * (1.0 - sigmoid(z))
 }
 
-// compute the error vector of the output layer from the cost and z.
-pub fn output_error(cost: &Array2<f32>, z: &Array2<f32>) -> Array2<f32> {
-    cost * sigmoid_prime(z)
-}
-
 // compute the error vector of a layer, from the error, weight matrix and z
 // of the next layer.
 pub fn layer_error(delta: &Array2<f32>, weights: &Array2<f32>, z: &Array2<f32>) -> Array2<f32> {
