@@ -91,7 +91,7 @@ impl Network {
 
         let (activations, zs): (Vec<Array2<f32>>, Vec<Array2<f32>>) = self.feedforward(&x);
 
-        let delta: Array2<f32> = cost.delta(
+        let mut delta: Array2<f32> = cost.delta(
             &zs[zs.len() - 1],
             &activations[activations.len()-1],
             y as usize
@@ -106,7 +106,7 @@ impl Network {
         );
         
         for l in 2..self.layers_num {
-            let delta: Array2<f32> = formulas::layer_error(
+            delta = formulas::layer_error(
                 &delta, &self.weights[nweights - l + 1], &zs[zs.len() - l]
             );
             gradient_b[nbiases - l] = formulas::rate_of_change_of_biases(&delta);
