@@ -1,5 +1,6 @@
+use libm::sqrtf;
 use ndarray::{Array, Array1, Array2};
-use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
+use ndarray_rand::{RandomExt, rand_distr::{Distribution, Normal, StandardNormal}};
 use rand::seq::SliceRandom;
 
 use crate::{formulas, io::mnist::Image, cost::Cost, regularization::Regularization};
@@ -19,7 +20,8 @@ impl Network {
         let mut weights: Vec<Array2<f32>> = Vec::new();
 
         for i in 1..layers_num {
-            weights.push(Array::random((layers[i], layers[i - 1]), StandardNormal));
+            let weights_distribution = init_weights_distribution(layers[i - 1]);
+            weights.push(Array::random((layers[i], layers[i - 1]), weights_distribution));
             biases.push(Array::random((layers[i], 1), StandardNormal));
         }
 
@@ -31,7 +33,7 @@ impl Network {
         }
     }
 
-    // Perform a Stochastic Gradient Descent to train a neural network.
+    // Perform a Stochastic Gradient Descent to train the neural network.
     pub fn sgd(
         &mut self,
         train_data: &[Image],
@@ -59,7 +61,7 @@ impl Network {
                 let (gb, gw) = self.gradients_from_mini_batch(mini_batch, cost);
 
                 self.update_biases_from_gradient(gb, eta, mini_batch_size);
-                self.update_weights_from_gradient(gw, eta, mini_batch_size);
+                self.update_weights_from_gradient(gw, eta, mini_batch_size, n_train, regularization);
             }
 
             println!("Epoch {}: {} / {}", epoch, self.evaluate(test_data), n_test);
@@ -183,6 +185,13 @@ impl Network {
     }
 }
 
+// compute the normal distribution of weights initialization from a standard
+// deviation depending on the number of input nodes. It makes the weights less
+// likely to saturate, as the Gaussian will be "squashed down".
+fn init_weights_distribution(input_nodes: usize) -> impl Distribution<f32> {
+    let std: f32 = 1. / sqrtf(input_nodes as f32);
+    Normal::new(0.0, std).unwrap()
+}
 
 fn zero_vec_like(vec: &[Array2<f32>]) -> Vec<Array2<f32>>{
     vec.iter().map(|x| {
