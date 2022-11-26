@@ -4,18 +4,22 @@
 use libm::expf;
 use ndarray::Array2;
 
+// apply the sigmoid function to the weighted sum of inputs of neurons (z)
 pub fn sigmoid(z: &Array2<f32>) -> Array2<f32> {
     z.map(|x| 1. / (1. + expf(-x)))
 }
 
+// apply the derivative sigmoid function to the weighted sum of
+// inputs of neurons (z)
 pub fn sigmoid_prime(z: &Array2<f32>) -> Array2<f32> {
     sigmoid(z) * (1.0 - sigmoid(z))
 }
 
-// compute the error vector of a layer, from the error, weight matrix and z
+// compute the error vector of a layer, from the error (delta),
+// weight matrix (weights) and the weighted sum of inputs of neurons (z),
 // of the next layer.
-pub fn layer_error(delta: &Array2<f32>, weights: &Array2<f32>, z: &Array2<f32>) -> Array2<f32> {
-    weights.t().dot(delta) * sigmoid_prime(z)
+pub fn layer_error(delta: &Array2<f32>, w: &Array2<f32>, z: &Array2<f32>) -> Array2<f32> {
+    w.t().dot(delta) * sigmoid_prime(z)
 }
 
 // compute the rate of change of the cost with respect to the biases
