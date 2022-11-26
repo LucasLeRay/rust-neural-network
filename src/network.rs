@@ -2,7 +2,7 @@ use ndarray::{Array, Array1, Array2};
 use ndarray_rand::{RandomExt, rand_distr::StandardNormal};
 use rand::seq::SliceRandom;
 
-use crate::{formulas, io::mnist::Image, cost::Cost};
+use crate::{formulas, io::mnist::Image, cost::Cost, regularization::Regularization};
 
 #[derive(Debug)]
 pub struct Network {
@@ -38,6 +38,7 @@ impl Network {
         epochs: u32,
         mini_batch_size: usize,
         eta: f32,
+        regularization: Option<&dyn Regularization>,
         test_data: &[Image],
         cost: &dyn Cost,
     ) {
@@ -124,9 +125,13 @@ impl Network {
         }
     }
 
-    fn update_weights_from_gradient(&mut self, gradients: Vec<Array2<f32>>, eta: f32, batch_size: usize) {
+    fn update_weights_from_gradient(&mut self, gradients: Vec<Array2<f32>>, eta: f32, batch_size: usize, n_train: usize, regularization: Option<&dyn Regularization>) {
         for (weights_layer, gradient_layer) in self.weights.iter_mut().zip(gradients.iter()) {
-            *weights_layer -= &((eta / batch_size as f32) * gradient_layer);
+            let scaled_gradient: Array2<f32> = (eta / batch_size as f32) * gradient_layer;
+            match regularization {
+                None => *weights_layer -= &scaled_gradient,
+                Some(reg) => *weights_layer = reg.rescale_weights(&weights_layer, n_train, eta) - scaled_gradient
+            }
         }
     }
 
