@@ -25,12 +25,13 @@ fn main() {
 
     network.sgd(
         &mut train_data,
-        30,
+        100,
         10,
         0.5,
+        10,
         Some(&regularization),
         &test_data,
-        &cost
+        &cost,
     );
 
     let model_filepath: String = format!("{}/{}.json", MODEL_FOLDER, Utc::now());

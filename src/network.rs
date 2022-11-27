@@ -50,12 +50,15 @@ impl Network {
         epochs: u32,
         mini_batch_size: usize,
         eta: f32,
+        early_stop: usize,
         regularization: Option<&dyn Regularization>,
         test_data: &[Image],
         cost: &dyn Cost,
     ) {
         let n_train: usize = train_data.len();
         let n_test: usize = test_data.len();
+        let mut best_accuracy: f32 = 0.0;
+        let mut epochs_without_improvement: usize = 0;
 
         for epoch in 0..epochs {
             let mut indices: Vec<usize> = (0..train_data.len()).collect::<Vec<usize>>();
@@ -74,7 +77,18 @@ impl Network {
                 self.update_weights_from_gradient(gw, eta, mini_batch_size, n_train, regularization);
             }
 
-            println!("Epoch {}: {} / {}", epoch, self.evaluate(test_data), n_test);
+            let accuracy: f32 = self.evaluate(test_data) as f32 / n_test as f32;
+            if accuracy > best_accuracy {
+                best_accuracy = accuracy;
+                epochs_without_improvement = 0;
+            } else {
+                epochs_without_improvement += 1;
+                if early_stop > 0 && epochs_without_improvement == early_stop {
+                    break;
+                }
+            }
+
+            println!("Epoch {}: accuracy: {}", epoch, accuracy);
         }
     }
 
@@ -147,8 +161,8 @@ impl Network {
         }
     }
 
-    // Perform a feedforward on the network from the training example.
-    // Return the activations of nodes.
+    // Perform a feedforward on the network from the training example. Return
+    // the activations of nodes and the weighted sum of inputs of neurons (z).
     fn feedforward(&self, x: &Array1<f32>) -> (Vec<Array2<f32>>, Vec<Array2<f32>>) {
         let mut activations: Vec<Array2<f32>> = Vec::new();
         let mut zs: Vec<Array2<f32>> = Vec::new();
