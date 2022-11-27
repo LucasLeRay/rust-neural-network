@@ -1,12 +1,13 @@
-use std::{fs::File, io::{Write, BufReader}};
-
 use libm::sqrtf;
 use ndarray::{Array, Array1, Array2};
 use ndarray_rand::{RandomExt, rand_distr::{Distribution, Normal, StandardNormal}};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use crate::{formulas, io::mnist::Image, cost::Cost, regularization::Regularization};
+use crate::formulas;
+use crate::io::{mnist::Image, self};
+use crate::cost::Cost;
+use crate::regularization::Regularization;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Network {
@@ -28,22 +29,18 @@ impl Network {
         }
 
         Network {
+            layers_num,
             biases,
             weights,
-            layers_num,
         }
     }
 
-    pub fn load(filename: &str) -> Network {
-        let file = File::open(filename).expect("Unable to open model file.");
-        let reader = BufReader::new(file);
-        serde_json::from_reader(reader).expect("Unable to parse model file.")
+    pub fn load(filepath: &str) -> Network {
+        io::model::load(filepath)
     }
 
-    pub fn save(&self, filename: &str) {
-        let data = serde_json::to_string(&self).expect("Unable to serialize model.");
-        let mut file = File::create(filename).expect("Unable to create model file.");
-        file.write_all(data.to_string().as_bytes()).expect("Unable to write model into file.");
+    pub fn save(&self, filepath: &str) {
+        io::model::save(self, filepath);
     }
 
     // Perform a Stochastic Gradient Descent to train the neural network.
