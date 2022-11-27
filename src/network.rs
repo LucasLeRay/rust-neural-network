@@ -1,13 +1,15 @@
+use std::{fs::File, io::{Write, BufReader}};
+
 use libm::sqrtf;
 use ndarray::{Array, Array1, Array2};
 use ndarray_rand::{RandomExt, rand_distr::{Distribution, Normal, StandardNormal}};
 use rand::seq::SliceRandom;
+use serde::{Deserialize, Serialize};
 
 use crate::{formulas, io::mnist::Image, cost::Cost, regularization::Regularization};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Network {
-    pub layers: Vec<usize>,
     pub layers_num: usize,
     pub biases: Vec<Array2<f32>>,
     pub weights: Vec<Array2<f32>>,
@@ -29,8 +31,19 @@ impl Network {
             biases,
             weights,
             layers_num,
-            layers: layers.to_owned()
         }
+    }
+
+    pub fn load(filename: &str) -> Network {
+        let file = File::open(filename).expect("Unable to open model file.");
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader).expect("Unable to parse model file.")
+    }
+
+    pub fn save(&self, filename: &str) {
+        let data = serde_json::to_string(&self).expect("Unable to serialize model.");
+        let mut file = File::create(filename).expect("Unable to create model file.");
+        file.write_all(data.to_string().as_bytes()).expect("Unable to write model into file.");
     }
 
     // Perform a Stochastic Gradient Descent to train the neural network.

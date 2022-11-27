@@ -28,5 +28,8 @@ fn main() {
         0.5,
         Some(&regularization),
         &test_data,
-        &cost);
+        &cost
+    );
+
+    network.save("model.json");
 }
